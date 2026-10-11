@@ -32,7 +32,7 @@ POKEDATA = {
         ]
     },
     "Pikachu": {
-        "hp": 90, "sprite": "pikachu.gif", "back_sprite": "pikachu_b.gif",
+        "hp": 100, "sprite": "pikachu.gif", "back_sprite": "pikachu_b.gif",
         "moves": [
             {"name": "Thunderbolt", "type": "d", "val": 35},
             {"name": "Thunder Wave", "type": "s", "val": 0},
