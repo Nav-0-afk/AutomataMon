@@ -10,7 +10,15 @@ class BattleUI:
         self.screen = pygame.display.set_mode((800, 600))
         pygame.display.set_caption("AutomataMon: Finite State Battle Engine")
         self.clock = pygame.time.Clock()
-        self.font = pygame.font.SysFont("Arial", 18, bold=True)
+
+        # --- Base Paths ---
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.asset_dir = os.path.join(base_dir, '..', 'assets')
+        self.bg_dir = os.path.join(self.asset_dir, 'ui', 'backgrounds')
+
+        # --- Load Custom Fonts ---
+        font_path = os.path.join(self.asset_dir, 'fonts', 'power clear bold.ttf')
+        self.font = pygame.font.Font(font_path, 22)
 
         self.phase = "SELECT"
         self.roster = list(POKEDATA.keys())
@@ -22,13 +30,8 @@ class BattleUI:
         self.log_lines = ["Choose your action!"]
 
         # --- Load UI Assets ---
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.asset_dir = os.path.join(base_dir, '..', 'assets')
-        self.bg_dir = os.path.join(self.asset_dir, 'ui', 'backgrounds')
-
         self.arrow_img = self.load_ui_img(os.path.join("ui", "arrow.png"), (20, 20))
         self.platform_img = self.load_ui_img(os.path.join("ui", "indoor2_base1.png"), (250, 75))
-
         self.current_bg = None
 
         # Load and slice the statuses spritesheet
@@ -146,7 +149,17 @@ class BattleUI:
             self.phase = "END"
             self.log_lines.append("You won! Press ENTER to restart.")
 
-    def draw_text(self, text, x, y, color=(0, 0, 0)):
+    def draw_text(self, text, x, y, color=(0, 0, 0), outline_color=(255, 255, 255)):
+        # 1. Render the outline text
+        outline = self.font.render(text, True, outline_color)
+
+        # 2. Blit the outline 1 pixel in every direction
+        self.screen.blit(outline, (x - 1, y))
+        self.screen.blit(outline, (x + 1, y))
+        self.screen.blit(outline, (x, y - 1))
+        self.screen.blit(outline, (x, y + 1))
+
+        # 3. Render and blit the primary colored text on top
         surface = self.font.render(text, True, color)
         self.screen.blit(surface, (x, y))
 
@@ -209,8 +222,8 @@ class BattleUI:
         else:
             self.screen.fill((240, 240, 240))
 
-        self.draw_pokemon(self.player, 150, 250)
-        self.draw_pokemon(self.enemy, 550, 80)
+        self.draw_pokemon(self.player, 100, 250)
+        self.draw_pokemon(self.enemy, 500, 80)
 
         # Bottom UI Box
         pygame.draw.rect(self.screen, (255, 255, 255), (0, 450, 800, 150))
@@ -263,7 +276,7 @@ class BattleUI:
 
             if self.phase == "SELECT":
                 self.screen.fill((200, 200, 255))
-                self.draw_text("SELECT YOUR POKEMON", 250, 100)
+                self.draw_text("CHOOSE YOUR POKEMON", 250, 100)
                 for i, name in enumerate(self.roster):
                     if i == self.select_index:
                         self.screen.blit(self.arrow_img, (270, 200 + (i * 40)))
