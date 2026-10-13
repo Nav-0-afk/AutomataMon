@@ -102,15 +102,32 @@ class BattleUI:
             self.clock.tick(60)
 
     def display_text(self, text_list):
-        """Types text letter by letter at medium speed and blocks inputs"""
-        self.log_lines = [""] * len(text_list)
-        for i, line in enumerate(text_list):
+        """Types text letter by letter, dynamically wrapping lines that exceed the UI box."""
+        # 1. Measure and wrap the input text
+        wrapped_lines = []
+        for line in text_list:
+            words = line.split(' ')
+            current_line = ""
+            for word in words:
+                test_line = current_line + word + " "
+                # Check if adding the next word exceeds the left box (360px safe zone)
+                if self.font.size(test_line)[0] <= 360:
+                    current_line = test_line
+                else:
+                    wrapped_lines.append(current_line.strip())
+                    current_line = word + " "
+            if current_line:
+                wrapped_lines.append(current_line.strip())
+
+        # 2. Execute the typewriter effect on the properly sized rows
+        self.log_lines = [""] * len(wrapped_lines)
+        for i, line in enumerate(wrapped_lines):
             for char in line:
                 self.log_lines[i] += char
                 self.draw_battle_ui()
                 pygame.display.flip()
-                self.wait(25)  # Medium typewriter speed (25ms per char)
-        self.wait(700)  # Pause to let player read
+                self.wait(35)
+        self.wait(700)
 
     def play_animation(self, anim_name, target_pkmn, target_x, target_y):
         frames = self.animations.get(anim_name, [])
