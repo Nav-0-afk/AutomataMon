@@ -2,46 +2,45 @@ import pygame
 import os
 from engine import process_turn
 
-# Added 'back_sprite' to all entries
+# Data of all the pokemons present in the game
 POKEDATA = {
     "Bulbasaur": {
         "hp": 100, "sprite": "bulbasaur.gif", "back_sprite": "bulbasaur_b.gif",
         "moves": [
-            {"name": "Razor Leaf", "type": "d", "val": 25},
-            {"name": "Sleep Powder", "type": "s", "val": 0},
-            {"name": "Leech Seed", "type": "b", "val": 10},
-            {"name": "Synthesis", "type": "h", "val": -30}
+            {"name": "Razor Leaf", "type": "d", "val": 25, "anim": "grass"},
+            {"name": "Solar Beam", "type": "d", "val": 45, "anim": "solar-beam"},
+            {"name": "Sleep Powder", "type": "s", "val": 0, "anim": "sleep"},
+            {"name": "Synthesis", "type": "h", "val": -30, "anim": "heal"}
         ]
     },
     "Charmander": {
         "hp": 100, "sprite": "charmander.gif", "back_sprite": "charmander_b.gif",
         "moves": [
-            {"name": "Flamethrower", "type": "d", "val": 30},
-            {"name": "Smokescreen", "type": "s", "val": 0},
-            {"name": "Will-O-Wisp", "type": "b", "val": 10},
-            {"name": "Rest", "type": "h", "val": -40}
+            {"name": "Flamethrower", "type": "d", "val": 25, "anim": "fire"},
+            {"name": "Fire Blast", "type": "d", "val": 45, "anim": "fire blast"},
+            {"name": "Fire Spin", "type": "b", "val": 25, "anim": "fire-spin"},
+            {"name": "Rest", "type": "h", "val": -40, "anim": "heal"}
         ]
     },
     "Squirtle": {
         "hp": 100, "sprite": "squirtle.gif", "back_sprite": "squirtle_b.gif",
         "moves": [
-            {"name": "Water Gun", "type": "d", "val": 25},
-            {"name": "Yawn", "type": "s", "val": 0},
-            {"name": "Toxic", "type": "b", "val": 10},
-            {"name": "Aqua Ring", "type": "h", "val": -20}
+            {"name": "Scratch", "type": "d", "val": 30, "anim": "scratch"},
+            {"name": "Hydro Pump", "type": "d", "val": 45, "anim": "hydropump"},
+            {"name": "Muddy Water", "type": "d", "val": 20, "anim": "muddy-water"},
+            {"name": "Aqua Ring", "type": "h", "val": -20, "anim": "heal"}
         ]
     },
     "Pikachu": {
         "hp": 100, "sprite": "pikachu.gif", "back_sprite": "pikachu_b.gif",
         "moves": [
-            {"name": "Thunderbolt", "type": "d", "val": 35},
-            {"name": "Thunder Wave", "type": "s", "val": 0},
-            {"name": "Static", "type": "b", "val": 10},
-            {"name": "Potion", "type": "h", "val": -25}
+            {"name": "Thunderbolt", "type": "d", "val": 35, "anim": "Thunderbolt"},
+            {"name": "Volt Tackle", "type": "d", "val": 50, "anim": "volt tackle"},
+            {"name": "Sing", "type": "s", "val": 0, "anim": "sing"},
+            {"name": "Potion", "type": "h", "val": -25, "anim": "heal"}
         ]
     }
 }
-
 
 class Pokemon:
     def __init__(self, name, is_player=False):
@@ -50,10 +49,9 @@ class Pokemon:
         self.max_hp = self.hp = data["hp"]
         self.moves = data["moves"]
         self.state = "q0"
+        self.sleep_timer = 0
 
         base_dir = os.path.dirname(os.path.abspath(__file__))
-
-        # Load the backward sprite if this is the player's Pokemon
         sprite_filename = data["back_sprite"] if is_player else data["sprite"]
         sprite_path = os.path.join(base_dir, '..', 'assets', 'sprites', sprite_filename)
 

@@ -11,12 +11,11 @@ class BattleUI:
         pygame.display.set_caption("AutomataMon: Finite State Battle Engine")
         self.clock = pygame.time.Clock()
 
-        # --- Base Paths ---
         base_dir = os.path.dirname(os.path.abspath(__file__))
         self.asset_dir = os.path.join(base_dir, '..', 'assets')
         self.bg_dir = os.path.join(self.asset_dir, 'ui', 'backgrounds')
 
-        # --- Load Custom Fonts ---
+        # --- Load Fonts ---
         font_path = os.path.join(self.asset_dir, 'fonts', 'power clear bold.ttf')
         self.font = pygame.font.Font(font_path, 22)
 
@@ -34,18 +33,34 @@ class BattleUI:
         self.platform_img = self.load_ui_img(os.path.join("ui", "indoor2_base1.png"), (250, 75))
         self.current_bg = None
 
-        # Load and slice the statuses spritesheet
+        # --- Load Status Icons for Burn/Sleep ---
         self.status_icons = {}
         try:
-            status_sheet = pygame.image.load(os.path.join(self.asset_dir, "statuses.png")).convert_alpha()
+            status_sheet = pygame.image.load(os.path.join(self.asset_dir, "ui/statuses.png")).convert_alpha()
             w = status_sheet.get_width()
             h = status_sheet.get_height() // 7
-
             self.status_icons["SLP"] = status_sheet.subsurface((0, 0 * h, w, h))
             self.status_icons["BRN"] = status_sheet.subsurface((0, 2 * h, w, h))
             self.status_icons["FNT"] = status_sheet.subsurface((0, 5 * h, w, h))
         except FileNotFoundError:
             pass
+
+            # --- Slice Animation Spritesheets ---
+        self.animations = {}
+        self.load_anim("fire-spin", "animations/fire blast.png", 5, 3)
+        self.load_anim("scratch", "animations/scratch.png", 5, 3)
+        self.load_anim("volt tackle", "animations/electric1.png", 5, 3)
+        self.load_anim("Thunderbolt", "animations/Thunder2.png", 5, 3)
+        self.load_anim("burn", "animations/Flames.png", 3, 1)
+        self.load_anim("hydropump", "animations/water3.png", 5, 3)
+        self.load_anim("grass", "animations/grass.png", 4, 3)
+        self.load_anim("leech-seed", "animations/leech-seed.png", 4, 3)
+        self.load_anim("solar-beam", "animations/solarbeam.png", 5, 2)
+        self.load_anim("sing", "animations/sing.png", 5, 1)
+        self.load_anim("fire blast", "animations/fire4.png", 5, 3)
+        self.load_anim("fire", "animations/fire5.png", 5, 3)
+        self.load_anim("muddy-water", "animations/muddywater.png", 5, 3)
+        self.load_anim("heal", "animations/Heal5.png", 5, 3)
 
     def load_ui_img(self, filename, scale):
         try:
@@ -56,123 +71,246 @@ class BattleUI:
             surf.fill((255, 0, 255))
             return surf
 
+    def load_anim(self, name, filename, cols, rows):
+        frames = []
+        try:
+            sheet = pygame.image.load(os.path.join(self.asset_dir, filename)).convert_alpha()
+            w = sheet.get_width() // cols
+            h = sheet.get_height() // rows
+
+            for y in range(rows):
+                for x in range(cols):
+                    rect = pygame.Rect(x * w, y * h, w, h)
+                    frame = sheet.subsurface(rect)
+                    frame = pygame.transform.scale(frame, (w * 1.1, h * 1.1))
+                    frames.append(frame)
+            self.animations[name] = frames
+        except FileNotFoundError:
+            print(f"ANIMATION ERROR: Missing {filename}")
+
+    # ==========================================
+    # --- ANIMATION & SEQUENCING HELPERS ---
+    # ==========================================
+
+    def wait(self, ms):
+        start = pygame.time.get_ticks()
+        while pygame.time.get_ticks() - start < ms:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    exit()
+            self.clock.tick(60)
+
+    def display_text(self, text_list):
+        """Types text letter by letter at medium speed and blocks inputs"""
+        self.log_lines = [""] * len(text_list)
+        for i, line in enumerate(text_list):
+            for char in line:
+                self.log_lines[i] += char
+                self.draw_battle_ui()
+                pygame.display.flip()
+                self.wait(25)  # Medium typewriter speed (25ms per char)
+        self.wait(700)  # Pause to let player read
+
+    def play_animation(self, anim_name, target_pkmn, target_x, target_y):
+        frames = self.animations.get(anim_name, [])
+        if not frames:
+            self.wait(500)
+            return
+
+        sprite_w = target_pkmn.sprite.get_width()
+        sprite_h = target_pkmn.sprite.get_height()
+        cx = target_x + (sprite_w // 2)
+        cy = target_y + (sprite_h // 2)
+
+        for frame in frames:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    exit()
+
+            self.draw_battle_ui()
+
+            fx = cx - (frame.get_width() // 2)
+            fy = cy - (frame.get_height() // 2)
+            self.screen.blit(frame, (fx, fy))
+
+            pygame.display.flip()
+            # SLOWED DOWN: 6 frames per second.
+            # A 15-frame animation now takes exactly 2.5 seconds to play.
+            self.clock.tick(15)
+
+            # ==========================================
+
+    # --- TURN LOGIC ---
+    # ==========================================
+
     def setup_battle(self, player_name):
         self.player = Pokemon(player_name, is_player=True)
         remaining = [p for p in self.roster if p != player_name]
         self.enemy = Pokemon(random.choice(remaining), is_player=False)
 
-        # Select Random Background
         try:
-            if not os.path.exists(self.bg_dir):
-                print(f"BACKGROUND ERROR: Cannot find the folder exactly at {self.bg_dir}")
-            else:
+            if os.path.exists(self.bg_dir):
                 bg_files = [f for f in os.listdir(self.bg_dir) if f.lower().endswith('.png')]
                 if bg_files:
                     chosen_bg = random.choice(bg_files)
-                    print(f"SUCCESS: Found and loading {chosen_bg}")
                     img = pygame.image.load(os.path.join(self.bg_dir, chosen_bg)).convert()
                     self.current_bg = pygame.transform.scale(img, (800, 600))
-                else:
-                    print(f"BACKGROUND ERROR: No .png files were found inside {self.bg_dir}")
-                    self.current_bg = None
-        except Exception as e:
-            print(f"BACKGROUND ERROR: Pygame failed to load the image. Reason: {e}")
+        except Exception:
             self.current_bg = None
 
         self.phase = "BATTLE"
         self.menu_index = 0
-        self.log_lines = [f"Wild {self.enemy.name} appeared!", "Choose your action!"]
+        self.display_text([f"Wild {self.enemy.name} appeared!"])
+        self.display_text(["Choose your action!"])
 
     def execute_turn(self):
-        self.log_lines = []
+        # ---------------------------
+        # PHASE 1: PLAYER TURN
+        # ---------------------------
+        if self.player.state in ["q2", "q4"]:
+            self.player.sleep_timer -= 1
+            if self.player.sleep_timer <= 0:
+                self.display_text([f"{self.player.name} woke up!"])
+                self.player.state = "q1" if self.player.state == "q4" else "q0"
 
-        # 1. Player Turn
+        can_move = self.player.state in ["q0", "q1"]
         move = self.player.moves[self.menu_index]
-        can_move = self.player.take_action(move['type'])
 
         if can_move:
-            self.log_lines.append(f"{self.player.name} used {move['name']}!")
+            self.display_text([f"{self.player.name} used {move['name']}!"])
+
+            is_heal = move['type'] == 'h'
+            anim_target = self.player if is_heal else self.enemy
+            tx, ty = (150, 250) if is_heal else (550, 80)
+            self.play_animation(move['anim'], anim_target, tx, ty)
+
             if move['type'] == 'd':
-                self.enemy.apply_damage(move['val'])
+                dmg = move['val']
+                if self.player.state in ["q1", "q4"]: dmg = max(1, dmg // 2)
+                self.enemy.apply_damage(dmg)
+                self.enemy.take_action('d')
             elif move['type'] == 'h':
                 self.player.apply_damage(move['val'])
-            elif move['type'] in ['s', 'b']:
-                self.enemy.take_action(move['type'])
+                self.player.take_action('h')
+            elif move['type'] == 's':
+                if self.enemy.state not in ["q2", "q4"]:
+                    self.enemy.take_action('s')
+                    self.enemy.sleep_timer = random.randint(1, 3)
+            elif move['type'] == 'b':
+                # Apply initial attack damage (e.g. Fire Spin deals 25) before calculating burn
+                if move.get('val', 0) > 0:
+                    self.enemy.apply_damage(move['val'])
+                if self.enemy.name == "Charmander":
+                    self.display_text(["It had no effect! Charmander is immune."])
+                else:
+                    self.enemy.take_action('b')
         else:
-            self.log_lines.append(f"{self.player.name} is incapacitated! ({self.player.state})")
+            if self.player.state in ["q2", "q4"]:
+                self.display_text([f"{self.player.name} is fast asleep."])
+            else:
+                self.display_text([f"{self.player.name} is incapacitated!"])
 
         if self.enemy.state == "q3":
             self.phase = "END"
-            self.log_lines.append("You won! Press ENTER to restart.")
+            self.display_text(["You won! Press ENTER to restart."])
             return
 
-        # 2. CPU Turn (State-Aware AI)
+        # ---------------------------
+        # PHASE 2: ENEMY TURN
+        # ---------------------------
+        if self.enemy.state in ["q2", "q4"]:
+            self.enemy.sleep_timer -= 1
+            if self.enemy.sleep_timer <= 0:
+                self.display_text([f"Enemy {self.enemy.name} woke up!"])
+                self.enemy.state = "q1" if self.enemy.state == "q4" else "q0"
+
         moves_by_type = {m['type']: m for m in self.enemy.moves}
         cpu_move = None
-
         if self.enemy.hp < (self.enemy.max_hp * 0.3) and 'h' in moves_by_type:
             cpu_move = moves_by_type['h']
         elif self.player.state not in ["q2", "q4", "q3"] and 's' in moves_by_type:
             if random.random() < 0.6: cpu_move = moves_by_type['s']
         elif self.player.state not in ["q1", "q4", "q3"] and 'b' in moves_by_type:
-            if random.random() < 0.6: cpu_move = moves_by_type['b']
+            if self.player.name != "Charmander" and random.random() < 0.6: cpu_move = moves_by_type['b']
 
         if not cpu_move:
-            cpu_move = moves_by_type.get('d', random.choice(self.enemy.moves))
+            dmg_moves = [m for m in self.enemy.moves if m['type'] == 'd']
+            cpu_move = random.choice(dmg_moves) if dmg_moves else random.choice(self.enemy.moves)
 
-        cpu_can_move = self.enemy.take_action(cpu_move['type'])
+        cpu_can_move = self.enemy.state in ["q0", "q1"]
 
         if cpu_can_move:
-            self.log_lines.append(f"Enemy {self.enemy.name} used {cpu_move['name']}!")
+            self.display_text([f"Enemy {self.enemy.name} used {cpu_move['name']}!"])
+
+            is_heal = cpu_move['type'] == 'h'
+            anim_target = self.enemy if is_heal else self.player
+            tx, ty = (550, 80) if is_heal else (150, 250)
+            self.play_animation(cpu_move['anim'], anim_target, tx, ty)
+
             if cpu_move['type'] == 'd':
-                self.player.apply_damage(cpu_move['val'])
+                dmg = cpu_move['val']
+                if self.enemy.state in ["q1", "q4"]: dmg = max(1, dmg // 2)
+                self.player.apply_damage(dmg)
+                self.player.take_action('d')
             elif cpu_move['type'] == 'h':
                 self.enemy.apply_damage(cpu_move['val'])
-            elif cpu_move['type'] in ['s', 'b']:
-                self.player.take_action(cpu_move['type'])
+                self.enemy.take_action('h')
+            elif cpu_move['type'] == 's':
+                if self.player.state not in ["q2", "q4"]:
+                    self.player.take_action('s')
+                    self.player.sleep_timer = random.randint(1, 3)
+            elif cpu_move['type'] == 'b':
+                if cpu_move.get('val', 0) > 0:
+                    self.player.apply_damage(cpu_move['val'])
+                if self.player.name == "Charmander":
+                    self.display_text(["It had no effect! Charmander is immune."])
+                else:
+                    self.player.take_action('b')
         else:
-            self.log_lines.append(f"Enemy {self.enemy.name} is incapacitated! ({self.enemy.state})")
+            if self.enemy.state in ["q2", "q4"]:
+                self.display_text([f"Enemy {self.enemy.name} is fast asleep."])
+            else:
+                self.display_text([f"Enemy {self.enemy.name} is incapacitated!"])
 
-        # --- Apply Post-Turn Tick Damage ---
+        # ---------------------------
+        # PHASE 3: POST-TURN TICK DAMAGE
+        # ---------------------------
         if self.player.state in ["q1", "q4"]:
-            self.player.apply_damage(10)
-            self.log_lines.append(f"{self.player.name} is hurt by its burn!")
+            self.play_animation("burn", self.player, 150, 250)
+            burn_dmg = max(1, self.player.max_hp // 16)
+            self.player.apply_damage(burn_dmg)
+            self.display_text([f"{self.player.name} is hurt by its burn!"])
 
         if self.enemy.state in ["q1", "q4"]:
-            self.enemy.apply_damage(10)
-            self.log_lines.append(f"Enemy {self.enemy.name} is hurt by its burn!")
+            self.play_animation("burn", self.enemy, 550, 80)
+            burn_dmg = max(1, self.enemy.max_hp // 16)
+            self.enemy.apply_damage(burn_dmg)
+            self.display_text([f"Enemy {self.enemy.name} is hurt by its burn!"])
 
         if self.player.state == "q3":
             self.phase = "END"
-            self.log_lines.append("You blacked out! Press ENTER to restart.")
+            self.display_text(["You blacked out! Press ENTER to restart."])
         elif self.enemy.state == "q3":
             self.phase = "END"
-            self.log_lines.append("You won! Press ENTER to restart.")
+            self.display_text(["You won! Press ENTER to restart."])
+        else:
+            self.display_text(["Choose your action!"])
+
+    # ==========================================
+    # --- DRAWING & UI ---
+    # ==========================================
 
     def draw_text(self, text, x, y, color=(0, 0, 0), outline_color=(255, 255, 255)):
-        # 1. Render the outline text
         outline = self.font.render(text, True, outline_color)
-
-        # 2. Blit the outline 1 pixel in every direction
         self.screen.blit(outline, (x - 1, y))
         self.screen.blit(outline, (x + 1, y))
         self.screen.blit(outline, (x, y - 1))
         self.screen.blit(outline, (x, y + 1))
 
-        # 3. Render and blit the primary colored text on top
         surface = self.font.render(text, True, color)
         self.screen.blit(surface, (x, y))
-
-    def draw_status_icons(self, state, x, y):
-        if state == "q1" and "BRN" in self.status_icons:
-            self.screen.blit(self.status_icons["BRN"], (x, y))
-        elif state == "q2" and "SLP" in self.status_icons:
-            self.screen.blit(self.status_icons["SLP"], (x, y))
-        elif state == "q3" and "FNT" in self.status_icons:
-            self.screen.blit(self.status_icons["FNT"], (x, y))
-        elif state == "q4":
-            if "BRN" in self.status_icons: self.screen.blit(self.status_icons["BRN"], (x, y))
-            if "SLP" in self.status_icons: self.screen.blit(self.status_icons["SLP"], (x + 35, y))
 
     def draw_health_bar(self, x, y, hp, max_hp):
         bar_width = 150
@@ -187,25 +325,35 @@ class BattleUI:
         else:
             bar_color = (255, 0, 0)
 
-        # Restore the black border and gray background for the health bar
         pygame.draw.rect(self.screen, (0, 0, 0), (x - 2, y - 2, bar_width + 4, bar_height + 4))
         pygame.draw.rect(self.screen, (100, 100, 100), (x, y, bar_width, bar_height))
         pygame.draw.rect(self.screen, bar_color, (x, y, fill_width, bar_height))
 
-        # HP Text beside the bar
         self.draw_text(f"{hp}/{max_hp}", x + bar_width + 10, y - 5)
 
+    def draw_status_icons(self, state, x, y):
+        # Maps DFA States directly to the cropped icons loaded in __init__
+        if not hasattr(self, 'status_icons') or not self.status_icons:
+            return
+
+        if state == "q1" and "BRN" in self.status_icons:
+            self.screen.blit(self.status_icons["BRN"], (x, y))
+        elif state == "q2" and "SLP" in self.status_icons:
+            self.screen.blit(self.status_icons["SLP"], (x, y))
+        elif state == "q3" and "FNT" in self.status_icons:
+            self.screen.blit(self.status_icons["FNT"], (x, y))
+        elif state == "q4":
+            if "BRN" in self.status_icons: self.screen.blit(self.status_icons["BRN"], (x, y))
+            if "SLP" in self.status_icons: self.screen.blit(self.status_icons["SLP"], (x + 35, y))
+
     def draw_pokemon(self, pkmn, x, y):
-        # 1. Base Platform and Sprite
-        self.screen.blit(self.platform_img, (x - 70, y + 90))
+        self.screen.blit(self.platform_img, (x - 60, y + 85))
         self.screen.blit(pkmn.sprite, (x, y))
 
-        # 2. Text and Elements hovering directly over the sprite
         self.draw_text(f"{pkmn.name}", x, y - 55)
         self.draw_health_bar(x, y - 25, pkmn.hp, pkmn.max_hp)
-        self.draw_status_icons(pkmn.state, x + 130, y - 65)
+        self.draw_status_icons(pkmn.state, x + 120, y - 55)
 
-        # 3. DFA Mathematical State Tracker
         color = (0, 0, 0)
         if pkmn.state == "q0":
             color = (34, 139, 34)
@@ -214,7 +362,7 @@ class BattleUI:
         elif "q" in pkmn.state:
             color = (255, 140, 0)
 
-        self.draw_text(f"DFA: {pkmn.state}", x, y - 5, color)
+        self.draw_text(f"DFA: {pkmn.state}", x + 155, y, color)
 
     def draw_battle_ui(self):
         if self.current_bg:
@@ -222,19 +370,16 @@ class BattleUI:
         else:
             self.screen.fill((240, 240, 240))
 
-        self.draw_pokemon(self.player, 100, 250)
-        self.draw_pokemon(self.enemy, 500, 80)
+        self.draw_pokemon(self.player, 150, 250)
+        self.draw_pokemon(self.enemy, 550, 80)
 
-        # Bottom UI Box
         pygame.draw.rect(self.screen, (255, 255, 255), (0, 450, 800, 150))
         pygame.draw.rect(self.screen, (0, 0, 0), (0, 450, 800, 150), 3)
         pygame.draw.line(self.screen, (0, 0, 0), (400, 450), (400, 600), 3)
 
-        # Log
         for i, line in enumerate(self.log_lines):
             self.draw_text(line, 20, 470 + (i * 35))
 
-        # Grid + Image Arrow Cursor
         positions = [(440, 480), (630, 480), (440, 540), (630, 540)]
         for i, move in enumerate(self.player.moves):
             x, y = positions[i]
@@ -276,7 +421,7 @@ class BattleUI:
 
             if self.phase == "SELECT":
                 self.screen.fill((200, 200, 255))
-                self.draw_text("CHOOSE YOUR POKEMON", 250, 100)
+                self.draw_text("SELECT YOUR POKEMON", 250, 100)
                 for i, name in enumerate(self.roster):
                     if i == self.select_index:
                         self.screen.blit(self.arrow_img, (270, 200 + (i * 40)))
