@@ -9,7 +9,7 @@ POKEDATA = {
         "moves": [
             {"name": "Razor Leaf", "type": "d", "val": 25, "anim": "grass"},
             {"name": "Solar Beam", "type": "d", "val": 45, "anim": "solar-beam"},
-            {"name": "Sleep Powder", "type": "s", "val": 0, "anim": "sleep"},
+            {"name": "Sleep Powder", "type": "s", "val": 0, "anim": "sing"},
             {"name": "Synthesis", "type": "h", "val": -30, "anim": "heal"}
         ]
     },
@@ -19,7 +19,7 @@ POKEDATA = {
             {"name": "Flamethrower", "type": "d", "val": 25, "anim": "fire"},
             {"name": "Fire Blast", "type": "d", "val": 45, "anim": "fire blast"},
             {"name": "Fire Spin", "type": "b", "val": 25, "anim": "fire-spin"},
-            {"name": "Rest", "type": "h", "val": -40, "anim": "heal"}
+            {"name": "Rest", "type": "r", "val": -50, "anim": "heal"}
         ]
     },
     "Squirtle": {
@@ -27,15 +27,15 @@ POKEDATA = {
         "moves": [
             {"name": "Scratch", "type": "d", "val": 30, "anim": "scratch"},
             {"name": "Hydro Pump", "type": "d", "val": 45, "anim": "hydropump"},
-            {"name": "Muddy Water", "type": "d", "val": 20, "anim": "muddy-water"},
-            {"name": "Aqua Ring", "type": "h", "val": -20, "anim": "heal"}
+            {"name": "Muddy Water", "type": "x", "val": 20, "anim": "muddy-water"},
+            {"name": "Aqua Ring", "type": "h", "val": -25, "anim": "heal"}
         ]
     },
     "Pikachu": {
-        "hp": 100, "sprite": "pikachu.gif", "back_sprite": "pikachu_b.gif",
+        "hp": 90, "sprite": "pikachu.gif", "back_sprite": "pikachu_b.gif",
         "moves": [
             {"name": "Thunderbolt", "type": "d", "val": 35, "anim": "Thunderbolt"},
-            {"name": "Volt Tackle", "type": "d", "val": 50, "anim": "volt tackle"},
+            {"name": "Volt Tackle", "type": "p", "val": 40, "anim": "volt tackle"},
             {"name": "Sing", "type": "s", "val": 0, "anim": "sing"},
             {"name": "Potion", "type": "h", "val": -25, "anim": "heal"}
         ]

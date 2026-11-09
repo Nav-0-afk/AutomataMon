@@ -1,1 +1,1 @@
-from .dfa import process_turn, current_state, accept_states
+from .dfa import process_turn, ACCEPTING_STATES as accept_states

@@ -34,13 +34,16 @@ class BattleUI:
         self.current_bg = None
 
         # --- Load Status Icons for Burn/Sleep ---
+        # --- Load Status Icons for Burn/Sleep/Poison/Paralysis ---
         self.status_icons = {}
         try:
-            status_sheet = pygame.image.load(os.path.join(self.asset_dir, "ui/statuses.png")).convert_alpha()
+            status_sheet = pygame.image.load(os.path.join(self.asset_dir, "statuses_2.png")).convert_alpha()
             w = status_sheet.get_width()
             h = status_sheet.get_height() // 7
             self.status_icons["SLP"] = status_sheet.subsurface((0, 0 * h, w, h))
+            self.status_icons["PSN"] = status_sheet.subsurface((0, 1 * h, w, h))
             self.status_icons["BRN"] = status_sheet.subsurface((0, 2 * h, w, h))
+            self.status_icons["PAR"] = status_sheet.subsurface((0, 3 * h, w, h))
             self.status_icons["FNT"] = status_sheet.subsurface((0, 5 * h, w, h))
         except FileNotFoundError:
             pass
@@ -182,52 +185,100 @@ class BattleUI:
         self.display_text([f"Wild {self.enemy.name} appeared!"])
         self.display_text(["Choose your action!"])
 
+    def _process_combatant_turn(self, attacker, defender, move, is_player):
+        prefix = "" if is_player else "Enemy "
+        target_prefix = "Enemy " if is_player else ""
+        atk_coords = (150, 250) if is_player else (550, 80)
+        def_coords = (550, 80) if is_player else (150, 250)
+
+        # 1. Pre-turn Sleep Wake Check via DFA input 'w'
+        if attacker.state in ["q2", "q4", "q6"]:
+            attacker.sleep_timer -= 1
+            if attacker.sleep_timer <= 0:
+                attacker.take_action('w')
+                self.display_text([f"{prefix}{attacker.name} woke up!"])
+
+        # 2. Pre-turn Paralysis Stun Check via DFA input 'z'
+        if attacker.state == "q7":
+            if random.random() < 0.25:
+                attacker.take_action('z')  # Transitions q7 -> q8 (Reject state)
+
+        # 3. Check DFA Accepting State
+        can_move = attacker.state in ["q0", "q1", "q5", "q7"]
+
+        if not can_move:
+            if attacker.state in ["q2", "q4", "q6"]:
+                self.display_text([f"{prefix}{attacker.name} is fast asleep."])
+            elif attacker.state == "q8":
+                self.display_text([f"{prefix}{attacker.name} is paralyzed! It can't move!"])
+                attacker.take_action('w')  # Reset q8 -> q7 for next turn
+            else:
+                self.display_text([f"{prefix}{attacker.name} is incapacitated!"])
+            return
+
+        # 4. Execute Valid Move
+        self.display_text([f"{prefix}{attacker.name} used {move['name']}!"])
+        is_self_target = move['type'] in ['h', 'r']
+        anim_target = attacker if is_self_target else defender
+        tx, ty = atk_coords if is_self_target else def_coords
+        self.play_animation(move['anim'], anim_target, tx, ty)
+
+        m_type = move['type']
+        if m_type == 'd':
+            dmg = move['val']
+            if attacker.state in ["q1", "q4"]:
+                dmg = max(1, dmg // 2)
+            defender.apply_damage(dmg)
+            if defender.state != "q3":
+                defender.take_action('d')
+
+        elif m_type == 'h':
+            attacker.apply_damage(move['val'])
+            attacker.take_action('h')
+
+        elif m_type == 'r':
+            attacker.apply_damage(move['val'])
+            attacker.take_action('r')  # Cures status and transitions to q2 (Asleep)
+            attacker.sleep_timer = 2
+            self.display_text([f"{prefix}{attacker.name} slept and became healthy!"])
+
+        elif m_type == 's':
+            if defender.state not in ["q2", "q4", "q6", "q3"]:
+                prev = defender.state
+                defender.take_action('s')
+                if defender.state != prev:
+                    defender.sleep_timer = random.randint(1, 3)
+                    self.display_text([f"{target_prefix}{defender.name} fell asleep!"])
+            else:
+                self.display_text(["But it failed!"])
+
+        elif m_type in ['b', 'x', 'p']:
+            if move.get('val', 0) > 0:
+                dmg = move['val']
+                if attacker.state in ["q1", "q4"]:
+                    dmg = max(1, dmg // 2)
+                defender.apply_damage(dmg)
+                if defender.state != "q3":
+                    defender.take_action('d')
+
+            if defender.state != "q3":
+                if m_type == 'b' and defender.name == "Charmander":
+                    self.display_text(["Charmander is immune to burns!"])
+                elif m_type == 'p' and defender.name == "Pikachu":
+                    self.display_text(["Pikachu is immune to paralysis!"])
+                else:
+                    prev = defender.state
+                    defender.take_action(m_type)
+                    if defender.state != prev:
+                        msg = {"b": "was burned!", "x": "was poisoned!", "p": "is paralyzed!"}[m_type]
+                        self.display_text([f"{target_prefix}{defender.name} {msg}"])
+
     def execute_turn(self):
         # ---------------------------
         # PHASE 1: PLAYER TURN
         # ---------------------------
-        if self.player.state in ["q2", "q4"]:
-            self.player.sleep_timer -= 1
-            if self.player.sleep_timer <= 0:
-                self.display_text([f"{self.player.name} woke up!"])
-                self.player.state = "q1" if self.player.state == "q4" else "q0"
-
-        can_move = self.player.state in ["q0", "q1"]
-        move = self.player.moves[self.menu_index]
-
-        if can_move:
-            self.display_text([f"{self.player.name} used {move['name']}!"])
-
-            is_heal = move['type'] == 'h'
-            anim_target = self.player if is_heal else self.enemy
-            tx, ty = (150, 250) if is_heal else (550, 80)
-            self.play_animation(move['anim'], anim_target, tx, ty)
-
-            if move['type'] == 'd':
-                dmg = move['val']
-                if self.player.state in ["q1", "q4"]: dmg = max(1, dmg // 2)
-                self.enemy.apply_damage(dmg)
-                self.enemy.take_action('d')
-            elif move['type'] == 'h':
-                self.player.apply_damage(move['val'])
-                self.player.take_action('h')
-            elif move['type'] == 's':
-                if self.enemy.state not in ["q2", "q4"]:
-                    self.enemy.take_action('s')
-                    self.enemy.sleep_timer = random.randint(1, 3)
-            elif move['type'] == 'b':
-                # Apply initial attack damage (e.g. Fire Spin deals 25) before calculating burn
-                if move.get('val', 0) > 0:
-                    self.enemy.apply_damage(move['val'])
-                if self.enemy.name == "Charmander":
-                    self.display_text(["It had no effect! Charmander is immune."])
-                else:
-                    self.enemy.take_action('b')
-        else:
-            if self.player.state in ["q2", "q4"]:
-                self.display_text([f"{self.player.name} is fast asleep."])
-            else:
-                self.display_text([f"{self.player.name} is incapacitated!"])
+        player_move = self.player.moves[self.menu_index]
+        self._process_combatant_turn(self.player, self.enemy, player_move, is_player=True)
 
         if self.enemy.state == "q3":
             self.phase = "END"
@@ -235,76 +286,52 @@ class BattleUI:
             return
 
         # ---------------------------
-        # PHASE 2: ENEMY TURN
+        # PHASE 2: ENEMY TURN (State-Aware AI)
         # ---------------------------
-        if self.enemy.state in ["q2", "q4"]:
-            self.enemy.sleep_timer -= 1
-            if self.enemy.sleep_timer <= 0:
-                self.display_text([f"Enemy {self.enemy.name} woke up!"])
-                self.enemy.state = "q1" if self.enemy.state == "q4" else "q0"
-
         moves_by_type = {m['type']: m for m in self.enemy.moves}
         cpu_move = None
-        if self.enemy.hp < (self.enemy.max_hp * 0.3) and 'h' in moves_by_type:
-            cpu_move = moves_by_type['h']
-        elif self.player.state not in ["q2", "q4", "q3"] and 's' in moves_by_type:
-            if random.random() < 0.6: cpu_move = moves_by_type['s']
-        elif self.player.state not in ["q1", "q4", "q3"] and 'b' in moves_by_type:
-            if self.player.name != "Charmander" and random.random() < 0.6: cpu_move = moves_by_type['b']
+
+        if self.enemy.hp < (self.enemy.max_hp * 0.35):
+            if 'r' in moves_by_type and self.enemy.state != "q2":
+                cpu_move = moves_by_type['r']
+            elif 'h' in moves_by_type:
+                cpu_move = moves_by_type['h']
+
+        if not cpu_move and self.player.state == "q0" and random.random() < 0.6:
+            for status_type in ['s', 'b', 'x', 'p']:
+                if status_type in moves_by_type:
+                    if status_type == 'b' and self.player.name == "Charmander":
+                        continue
+                    if status_type == 'p' and self.player.name == "Pikachu":
+                        continue
+                    cpu_move = moves_by_type[status_type]
+                    break
 
         if not cpu_move:
-            dmg_moves = [m for m in self.enemy.moves if m['type'] == 'd']
+            dmg_moves = [m for m in self.enemy.moves if m.get('val', 0) > 0]
             cpu_move = random.choice(dmg_moves) if dmg_moves else random.choice(self.enemy.moves)
 
-        cpu_can_move = self.enemy.state in ["q0", "q1"]
+        self._process_combatant_turn(self.enemy, self.player, cpu_move, is_player=False)
 
-        if cpu_can_move:
-            self.display_text([f"Enemy {self.enemy.name} used {cpu_move['name']}!"])
-
-            is_heal = cpu_move['type'] == 'h'
-            anim_target = self.enemy if is_heal else self.player
-            tx, ty = (550, 80) if is_heal else (150, 250)
-            self.play_animation(cpu_move['anim'], anim_target, tx, ty)
-
-            if cpu_move['type'] == 'd':
-                dmg = cpu_move['val']
-                if self.enemy.state in ["q1", "q4"]: dmg = max(1, dmg // 2)
-                self.player.apply_damage(dmg)
-                self.player.take_action('d')
-            elif cpu_move['type'] == 'h':
-                self.enemy.apply_damage(cpu_move['val'])
-                self.enemy.take_action('h')
-            elif cpu_move['type'] == 's':
-                if self.player.state not in ["q2", "q4"]:
-                    self.player.take_action('s')
-                    self.player.sleep_timer = random.randint(1, 3)
-            elif cpu_move['type'] == 'b':
-                if cpu_move.get('val', 0) > 0:
-                    self.player.apply_damage(cpu_move['val'])
-                if self.player.name == "Charmander":
-                    self.display_text(["It had no effect! Charmander is immune."])
-                else:
-                    self.player.take_action('b')
-        else:
-            if self.enemy.state in ["q2", "q4"]:
-                self.display_text([f"Enemy {self.enemy.name} is fast asleep."])
-            else:
-                self.display_text([f"Enemy {self.enemy.name} is incapacitated!"])
+        if self.player.state == "q3":
+            self.phase = "END"
+            self.display_text(["You blacked out! Press ENTER to restart."])
+            return
 
         # ---------------------------
         # PHASE 3: POST-TURN TICK DAMAGE
         # ---------------------------
-        if self.player.state in ["q1", "q4"]:
-            self.play_animation("burn", self.player, 150, 250)
-            burn_dmg = max(1, self.player.max_hp // 16)
-            self.player.apply_damage(burn_dmg)
-            self.display_text([f"{self.player.name} is hurt by its burn!"])
-
-        if self.enemy.state in ["q1", "q4"]:
-            self.play_animation("burn", self.enemy, 550, 80)
-            burn_dmg = max(1, self.enemy.max_hp // 16)
-            self.enemy.apply_damage(burn_dmg)
-            self.display_text([f"Enemy {self.enemy.name} is hurt by its burn!"])
+        for pkmn, coords, prefix in [(self.player, (150, 250), ""), (self.enemy, (550, 80), "Enemy ")]:
+            if pkmn.state in ["q1", "q4"]:
+                self.play_animation("burn", pkmn, coords[0], coords[1])
+                burn_dmg = max(1, pkmn.max_hp // 16)
+                pkmn.apply_damage(burn_dmg)
+                self.display_text([f"{prefix}{pkmn.name} is hurt by its burn!"])
+            elif pkmn.state in ["q5", "q6"]:
+                self.play_animation("leech-seed", pkmn, coords[0], coords[1])
+                psn_dmg = max(1, pkmn.max_hp // 8)
+                pkmn.apply_damage(psn_dmg)
+                self.display_text([f"{prefix}{pkmn.name} is hurt by poison!"])
 
         if self.player.state == "q3":
             self.phase = "END"
@@ -315,10 +342,6 @@ class BattleUI:
         else:
             self.display_text(["Choose your action!"])
 
-    # ==========================================
-    # --- DRAWING & UI ---
-    # ==========================================
-
     def draw_text(self, text, x, y, color=(0, 0, 0), outline_color=(255, 255, 255)):
         outline = self.font.render(text, True, outline_color)
         self.screen.blit(outline, (x - 1, y))
@@ -328,6 +351,10 @@ class BattleUI:
 
         surface = self.font.render(text, True, color)
         self.screen.blit(surface, (x, y))
+
+    # ==========================================
+    # --- DRAWING & UI ---
+    # ==========================================
 
     def draw_health_bar(self, x, y, hp, max_hp):
         bar_width = 150
@@ -349,7 +376,6 @@ class BattleUI:
         self.draw_text(f"{hp}/{max_hp}", x + bar_width + 10, y - 5)
 
     def draw_status_icons(self, state, x, y):
-        # Maps DFA States directly to the cropped icons loaded in __init__
         if not hasattr(self, 'status_icons') or not self.status_icons:
             return
 
@@ -362,6 +388,13 @@ class BattleUI:
         elif state == "q4":
             if "BRN" in self.status_icons: self.screen.blit(self.status_icons["BRN"], (x, y))
             if "SLP" in self.status_icons: self.screen.blit(self.status_icons["SLP"], (x + 35, y))
+        elif state == "q5" and "PSN" in self.status_icons:
+            self.screen.blit(self.status_icons["PSN"], (x, y))
+        elif state == "q6":
+            if "PSN" in self.status_icons: self.screen.blit(self.status_icons["PSN"], (x, y))
+            if "SLP" in self.status_icons: self.screen.blit(self.status_icons["SLP"], (x + 35, y))
+        elif state in ["q7", "q8"] and "PAR" in self.status_icons:
+            self.screen.blit(self.status_icons["PAR"], (x, y))
 
     def draw_pokemon(self, pkmn, x, y):
         self.screen.blit(self.platform_img, (x - 60, y + 85))
@@ -369,15 +402,14 @@ class BattleUI:
 
         self.draw_text(f"{pkmn.name}", x, y - 55)
         self.draw_health_bar(x, y - 25, pkmn.hp, pkmn.max_hp)
-        self.draw_status_icons(pkmn.state, x + 120, y - 55)
+        self.draw_status_icons(pkmn.state, x, y - 5)
 
-        color = (0, 0, 0)
         if pkmn.state == "q0":
-            color = (34, 139, 34)
-        elif pkmn.state in ["q2", "q3"]:
-            color = (255, 0, 0)
-        elif "q" in pkmn.state:
-            color = (255, 140, 0)
+            color = (34, 139, 34)                     # Green: Healthy (Accepting)
+        elif pkmn.state in ["q1", "q5", "q7"]:
+            color = (255, 140, 0)                     # Orange: Afflicted (Accepting)
+        else:
+            color = (255, 0, 0)                       # Red: Incapacitated / Fainted (Rejecting)
 
         self.draw_text(f"DFA: {pkmn.state}", x + 155, y, color)
 
@@ -403,6 +435,7 @@ class BattleUI:
             if i == self.menu_index:
                 self.screen.blit(self.arrow_img, (x - 25, y))
             self.draw_text(f"{move['name']}", x, y)
+
 
     def run(self):
         running = True
